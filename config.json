@@ -1,0 +1,20 @@
+{
+  "projectName": "claude-desktop-zh-localization",
+  "supportedVersion": "1.5354.0.0",
+  "supportedInstallRoot": "C:\\Program Files\\WindowsApps\\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\\app\\resources",
+  "installCandidates": [
+    "C:\\Program Files\\WindowsApps\\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\\app\\resources"
+  ],
+  "applyTargets": {
+    "rootLocale": "C:\\Program Files\\WindowsApps\\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\\app\\resources\\zh-CN.json",
+    "ionLocale": "C:\\Program Files\\WindowsApps\\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\\app\\resources\\ion-dist\\i18n\\zh-CN.json",
+    "ionLocaleZst": "C:\\Program Files\\WindowsApps\\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\\app\\resources\\ion-dist\\i18n\\zh-CN.json.zst",
+    "ionOverrides": "C:\\Program Files\\WindowsApps\\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\\app\\resources\\ion-dist\\i18n\\zh-CN.overrides.json",
+    "ionOverridesZst": "C:\\Program Files\\WindowsApps\\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\\app\\resources\\ion-dist\\i18n\\zh-CN.overrides.json.zst",
+    "statsigLocale": "C:\\Program Files\\WindowsApps\\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\\app\\resources\\ion-dist\\i18n\\statsig\\zh-CN.json",
+    "statsigLocaleZst": "C:\\Program Files\\WindowsApps\\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\\app\\resources\\ion-dist\\i18n\\statsig\\zh-CN.json.zst",
+    "assetsDir": "C:\\Program Files\\WindowsApps\\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\\app\\resources\\ion-dist\\assets\\v1"
+  },
+  "backupDirName": "backups",
+  "encoding": "utf-8"
+}
