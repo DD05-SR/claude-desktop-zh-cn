@@ -1,0 +1,19 @@
+[
+  {"file":"ca0135bc5-CNAruVDC.js","find":"label:\"Projects\"","repl":"label:\"项目\"","desc":"Projects -> 项目"},
+  {"file":"ca0135bc5-CNAruVDC.js","find":"label:\"Scheduled\"","repl":"label:\"定时任务\"","desc":"Scheduled -> 定时任务"},
+  {"file":"ca0135bc5-CNAruVDC.js","find":"label:\"Customize\"","repl":"label:\"自定义\"","desc":"Customize -> 自定义"},
+  {"file":"ca0135bc5-CNAruVDC.js","find":"cowork:\"New task\"","repl":"cowork:\"新建任务\"","desc":"New task -> 新建任务"},
+  {"file":"ca0135bc5-CNAruVDC.js","find":"label:\"Live artifacts\"","repl":"label:\"实时副本\"","desc":"Live artifacts -> 实时副本"},
+  {"file":"index-B4gnK-lR.js","find":"formatMessage({id:\"K4O03zh0vo\",defaultMessage:\"New task\"})","repl":"formatMessage({id:\"K4O03zh0vo\",defaultMessage:\"新建任务\"})","desc":"New task formatMessage"},
+  {"file":"c705e2e19-BJK-UQFD.js","find":"defaultMessage:\"Customize\",id:\"TXpOBiuxud\"","repl":"defaultMessage:\"自定义\",id:\"TXpOBiuxud\"","desc":"Customize defaultMessage"},
+  {"file":"c94fbcf3e-B6YfhWRr.js","find":"defaultMessage:\"Projects\",id:\"UxTJRaKagI\"","repl":"defaultMessage:\"项目\",id:\"UxTJRaKagI\"","desc":"Projects section"},
+  {"file":"c9500abe8-DZ7Qq7hA.js","find":"defaultMessage:\"Projects\",id:\"UxTJRaKagI\"","repl":"defaultMessage:\"项目\",id:\"UxTJRaKagI\"","desc":"Projects icon label"},
+  {"file":"ce28369f9-CqKELH8D.js","find":"defaultMessage:\"Projects\",id:\"UxTJRaKagI\"","repl":"defaultMessage:\"项目\",id:\"UxTJRaKagI\"","desc":"Projects scheduled"},
+  {"file":"c1b9abf13-BlfYaqHy.js","find":"title:\"Projects\"","repl":"title:\"项目\"","desc":"Projects page title"},
+  {"file":"c11959232-Db4MX1EI.js","find":"defaultMessage:\"Scheduled\",id:\"cXAlMRerxW\"","repl":"defaultMessage:\"定时任务\",id:\"cXAlMRerxW\"","desc":"Scheduled label"},
+  {"file":"c3d5d2a6f-FNPnXTT4.js","find":"defaultMessage:\"Scheduled\",id:\"cXAlMRerxW\"","repl":"defaultMessage:\"定时任务\",id:\"cXAlMRerxW\"","desc":"Scheduled trigger type"},
+  {"file":"cd3378dac-DJMBkXis.js","find":"defaultMessage:\"Scheduled\",id:\"cXAlMRerxW\"","repl":"defaultMessage:\"定时任务\",id:\"cXAlMRerxW\"","desc":"Scheduled origin"},
+  {"file":"cfa906a69-ajsxCJ6v.js","find":"defaultMessage:\"Scheduled\",id:\"cXAlMRerxW\"","repl":"defaultMessage:\"定时任务\",id:\"cXAlMRerxW\"","desc":"Scheduled nav button"},
+  {"file":"c94fbcf3e-B6YfhWRr.js","find":"defaultMessage:\"Scheduled\",id:\"cXAlMRerxW\"","repl":"defaultMessage:\"定时任务\",id:\"cXAlMRerxW\"","desc":"Scheduled allocation"},
+  {"file":"c9500abe8-DZ7Qq7hA.js","find":"defaultMessage:\"Scheduled\",id:\"cXAlMRerxW\"","repl":"defaultMessage:\"定时任务\",id:\"cXAlMRerxW\"","desc":"Scheduled tooltip"}
+]

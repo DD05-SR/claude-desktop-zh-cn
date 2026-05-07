@@ -6,42 +6,33 @@ foreach ($d in $dirs) {
     $res = Join-Path $d.FullName "app\resources"
     if (Test-Path (Join-Path $res "app.asar")) { $base = $res; break }
 }
-
 $assetsDir = Join-Path $base "ion-dist\assets\v1"
 $jsFiles = @(Get-ChildItem $assetsDir -Filter "*.js" -File)
 
-Write-Host "=== Searching for language list in JS files ===" -ForegroundColor Cyan
+Write-Host "=== Search sidebar text in JS files ===" -ForegroundColor Cyan
 Write-Host ""
 
-$searches = @(
-    'en-US.*de-DE',
-    'en-US.*de-DE.*fr-FR.*ko-KR',
-    'SUPPORTED_LOCALES',
-    'supportedLocales',
-    'availableLocales',
-    'languageList'
+$patterns = @(
+    'New task',
+    '"Projects"',
+    '"Scheduled"',
+    '"Customize"'
 )
 
-$foundFiles = @{}
-foreach ($search in $searches) {
-    Write-Host "--- Pattern: $search ---" -ForegroundColor Yellow
+foreach ($pat in $patterns) {
+    Write-Host "--- Searching: $pat ---" -ForegroundColor Yellow
     foreach ($f in $jsFiles) {
         try { $c = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8) } catch { continue }
-        if ($c -match $search) {
+        if ($c -match [regex]::Escape($pat)) {
             Write-Host "  FOUND in: $($f.Name)" -ForegroundColor Green
-            $idx = [regex]::Match($c, $search).Index
+            $idx = [regex]::Match($c, [regex]::Escape($pat)).Index
             $start = [Math]::Max(0, $idx - 80)
-            $len = [Math]::Min(300, $c.Length - $start)
+            $len = [Math]::Min(250, $c.Length - $start)
             Write-Host "  Context: $($c.Substring($start, $len))" -ForegroundColor Gray
             Write-Host ""
-            $foundFiles[$f.FullName] = $true
-            break
         }
     }
 }
 
-Write-Host "=== Files containing language patterns ===" -ForegroundColor Cyan
-if ($foundFiles.Count -eq 0) { Write-Host "  None found" -ForegroundColor Red }
-else { foreach ($k in $foundFiles.Keys) { Write-Host "  $(Split-Path -Leaf $k)" -ForegroundColor Green } }
-
+Write-Host "=== Done ===" -ForegroundColor Cyan
 Read-Host "Press Enter to exit"
