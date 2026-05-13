@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Continue"
 
+# DEPRECATED: use scripts\apply_localization.ps1. This legacy helper is kept only
+# for users who downloaded older releases.
+
 # ============================================================
 # Safe Chinese Localization Script for Claude Desktop
 # Strategy: backup everything before modification.

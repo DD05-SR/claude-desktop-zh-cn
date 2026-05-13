@@ -4,8 +4,8 @@ cd /d %~dp0
 net session >nul 2>&1
 if errorlevel 1 (
     echo Requesting admin privileges...
-    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoLogo -NoProfile -ExecutionPolicy Bypass -NoExit -File \"%~dp0scripts\simple_rollback.ps1\"' -Wait"
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoLogo -NoProfile -ExecutionPolicy Bypass -NoExit -File \"%~dp0scripts\rollback_localization.ps1\"' -Wait"
     exit /b
 )
 
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -NoExit -File "%~dp0scripts\simple_rollback.ps1"
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -NoExit -File "%~dp0scripts\rollback_localization.ps1"

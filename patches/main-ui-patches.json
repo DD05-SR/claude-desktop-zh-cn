@@ -1,0 +1,58 @@
+[
+  {
+    "description": "Support zh-CN locale code",
+    "kind": "locale-allowlist",
+    "required": true,
+    "find": "=[\"en-US\",\"de-DE\",\"fr-FR\",\"ko-KR\",\"ja-JP\",\"es-419\",\"es-ES\",\"it-IT\",\"hi-IN\",\"pt-BR\",\"id-ID\"]",
+    "replace": "=[\"en-US\",\"de-DE\",\"fr-FR\",\"ko-KR\",\"ja-JP\",\"es-419\",\"es-ES\",\"it-IT\",\"hi-IN\",\"pt-BR\",\"id-ID\",\"zh-CN\"]"
+  },
+  {
+    "description": "Sidebar New task default message",
+    "kind": "runtime-text",
+    "required": false,
+    "find": "defaultMessage:\"New task\"",
+    "replace": "defaultMessage:\"新建任务\""
+  },
+  {
+    "description": "Sidebar Projects default message",
+    "kind": "runtime-text",
+    "required": false,
+    "find": "defaultMessage:\"Projects\"",
+    "replace": "defaultMessage:\"项目\""
+  },
+  {
+    "description": "Sidebar Scheduled default message",
+    "kind": "runtime-text",
+    "required": false,
+    "find": "defaultMessage:\"Scheduled\"",
+    "replace": "defaultMessage:\"定时任务\""
+  },
+  {
+    "description": "Sidebar Customize default message",
+    "kind": "runtime-text",
+    "required": false,
+    "find": "defaultMessage:\"Customize\"",
+    "replace": "defaultMessage:\"自定义\""
+  },
+  {
+    "description": "Sidebar Projects object label",
+    "kind": "runtime-text",
+    "required": false,
+    "find": "label:\"Projects\"",
+    "replace": "label:\"项目\""
+  },
+  {
+    "description": "Sidebar Scheduled object label",
+    "kind": "runtime-text",
+    "required": false,
+    "find": "label:\"Scheduled\"",
+    "replace": "label:\"定时任务\""
+  },
+  {
+    "description": "Sidebar Customize object label",
+    "kind": "runtime-text",
+    "required": false,
+    "find": "label:\"Customize\"",
+    "replace": "label:\"自定义\""
+  }
+]

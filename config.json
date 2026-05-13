@@ -1,9 +1,11 @@
 {
   "projectName": "claude-desktop-zh-localization",
-  "supportedVersion": "1.6259.1.0",
-  "supportedInstallRoot": "C:\\Program Files\\WindowsApps\\Claude_1.6259.1.0_x64__pzs8sxrjxfjjc\\app\\resources",
-  "installCandidates": [
-    "C:\\Program Files\\WindowsApps\\Claude_1.6259.1.0_x64__pzs8sxrjxfjjc\\app\\resources"
-  ],
+  "locale": "zh-CN",
+  "backupDirName": "backups",
+  "missingTranslationsPath": "locales\\missing-zh-CN.json",
+  "installDiscovery": {
+    "windowsAppsRoot": "C:\\Program Files\\WindowsApps",
+    "manualInstallRoot": null
+  },
   "encoding": "utf-8"
 }

@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Continue"
 
+# DEPRECATED: use scripts\apply_localization.ps1. The adaptive flow scans every
+# JS/CSS asset instead of pinning a specific Claude version.
+
 $base = "C:\Program Files\WindowsApps\Claude_1.5354.0.0_x64__pzs8sxrjxfjjc\app\resources"
 $assetsDir = Join-Path $base "ion-dist\assets\v1"
 

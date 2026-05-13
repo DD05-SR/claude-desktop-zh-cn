@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $script:Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -10,10 +10,7 @@ function Read-Utf8Text {
 }
 
 function Write-Utf8Text {
-    param(
-        [string]$Path,
-        [string]$Content
-    )
+    param([string]$Path, [string]$Content)
     [System.IO.File]::WriteAllText($Path, $Content, $script:Utf8NoBom)
 }
 
@@ -25,17 +22,35 @@ function New-JsonSerializer {
 
 function Read-JsonObject {
     param([string]$Path)
-    $serializer = New-JsonSerializer
-    return $serializer.DeserializeObject((Read-Utf8Text -Path $Path))
+    return (New-JsonSerializer).DeserializeObject((Read-Utf8Text -Path $Path))
 }
 
 function Write-JsonFile {
-    param(
-        [string]$Path,
-        $Value
-    )
-    $json = $Value | ConvertTo-Json -Depth 10
+    param([string]$Path, $Value)
+    $parent = Split-Path -Parent $Path
+    if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+    $json = ConvertTo-Json -InputObject $Value -Depth 12
     Write-Utf8Text -Path $Path -Content ($json + [Environment]::NewLine)
+}
+
+function Get-Value {
+    param($Object, [string]$Key, $Default = $null)
+    if ($null -eq $Object) { return $Default }
+    if ($Object -is [System.Collections.IDictionary]) {
+        if (($Object.PSObject.Methods.Name -contains "ContainsKey") -and $Object.ContainsKey($Key)) {
+            return $Object[$Key]
+        }
+        if (($null -ne $Object.Keys) -and ($Object.Keys -contains $Key)) {
+            return $Object[$Key]
+        }
+        return $Default
+    }
+    if ($Object.PSObject.Properties.Name -contains $Key) {
+        return $Object.$Key
+    }
+    return $Default
 }
 
 function Get-ProjectRoot {
@@ -43,15 +58,58 @@ function Get-ProjectRoot {
 }
 
 function Get-Config {
-    return Read-JsonObject -Path (Join-Path (Get-ProjectRoot) "config.json")
+    $config = Read-JsonObject -Path (Join-Path (Get-ProjectRoot) "config.json")
+    if (-not (Get-Value $config "locale")) { $config["locale"] = "zh-CN" }
+    if (-not (Get-Value $config "backupDirName")) { $config["backupDirName"] = "backups" }
+    return $config
 }
 
 function Get-Patches {
     return Read-JsonObject -Path (Join-Path (Get-ProjectRoot) "patches\main-ui-patches.json")
 }
 
-function Get-VerificationTargets {
-    return Read-JsonObject -Path (Join-Path (Get-ProjectRoot) "locales\verification-targets.json")
+function Get-RuntimeTranslations {
+    $path = Join-Path (Get-ProjectRoot) "locales\runtime-zh-CN.translations.json"
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return @{}
+    }
+    return Read-JsonObject -Path $path
+}
+
+function New-RuntimeTranslationPatches {
+    param($Translations)
+    $patches = New-Object System.Collections.ArrayList
+    $shapes = @(
+        @{ Kind = "defaultMessage"; Prefix = 'defaultMessage:"'; Suffix = '"' },
+        @{ Kind = "label"; Prefix = 'label:"'; Suffix = '"' },
+        @{ Kind = "title"; Prefix = 'title:"'; Suffix = '"' },
+        @{ Kind = "cowork"; Prefix = 'cowork:"'; Suffix = '"' },
+        @{ Kind = "placeholder"; Prefix = 'placeholder:"'; Suffix = '"' },
+        @{ Kind = "aria-label"; Prefix = 'aria-label:"'; Suffix = '"' }
+    )
+
+    foreach ($source in @($Translations.Keys | Sort-Object)) {
+        $target = $Translations[$source]
+        if ([string]::IsNullOrWhiteSpace($source) -or [string]::IsNullOrWhiteSpace($target)) {
+            continue
+        }
+        foreach ($shape in $shapes) {
+            [void]$patches.Add([pscustomobject]@{
+                description = "Runtime translation: $source"
+                kind = "runtime-translation"
+                required = $false
+                find = "$($shape.Prefix)$source$($shape.Suffix)"
+                replace = "$($shape.Prefix)$target$($shape.Suffix)"
+            })
+        }
+    }
+    return @($patches)
+}
+
+function Get-EffectivePatches {
+    $basePatches = @(Get-Patches)
+    $translationPatches = @(New-RuntimeTranslationPatches -Translations (Get-RuntimeTranslations))
+    return @($basePatches + $translationPatches)
 }
 
 function Get-ProjectArtifacts {
@@ -64,52 +122,121 @@ function Get-ProjectArtifacts {
         IonOverridesZst = Join-Path $projectRoot "locales\ion-zh-CN.overrides.json.zst"
         StatsigLocale = Join-Path $projectRoot "locales\statsig\zh-CN.json"
         StatsigLocaleZst = Join-Path $projectRoot "locales\statsig\zh-CN.json.zst"
-        VerificationTargets = Join-Path $projectRoot "locales\verification-targets.json"
-        PatchedAssetsDir = Join-Path $projectRoot "patched-assets\v1"
+        MissingTranslations = Join-Path $projectRoot "locales\missing-zh-CN.json"
     }
 }
 
 function Assert-PathExists {
-    param(
-        [string]$Path,
-        [string]$Description,
-        [switch]$Directory
-    )
+    param([string]$Path, [string]$Description, [switch]$Directory)
     if (-not (Test-Path -LiteralPath $Path)) {
-        throw "$Description 不存在或无法访问: $Path"
+        throw "$Description does not exist or cannot be accessed: $Path"
     }
     if ($Directory -and -not (Test-Path -LiteralPath $Path -PathType Container)) {
-        throw "$Description 不是目录: $Path"
+        throw "$Description is not a directory: $Path"
     }
     if (-not $Directory -and -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw "$Description 不是文件: $Path"
+        throw "$Description is not a file: $Path"
     }
 }
 
 function Assert-ProjectArtifacts {
     param($Artifacts)
-    foreach ($key in $Artifacts.Keys) {
-        if ($key -like "*Dir") {
-            Assert-PathExists -Path $Artifacts[$key] -Description "项目资源 $key" -Directory
-        }
-        else {
-            Assert-PathExists -Path $Artifacts[$key] -Description "项目资源 $key"
-        }
+    foreach ($key in @("RootLocale", "IonLocale", "IonLocaleZst", "IonOverrides", "IonOverridesZst", "StatsigLocale", "StatsigLocaleZst")) {
+        Assert-PathExists -Path $Artifacts[$key] -Description "project artifact $key"
     }
 }
 
-function Assert-SupportedInstallation {
-    param($Config)
-    Assert-PathExists -Path $Config["supportedInstallRoot"] -Description "Claude Desktop 目标目录" -Directory
+function Get-VersionFromClaudePackageName {
+    param([string]$Name)
+    if ($Name -match '^Claude_([0-9]+(?:\.[0-9]+)+)_') {
+        return $Matches[1]
+    }
+    return $null
+}
 
-    foreach ($key in $Config["resourceChecks"].Keys) {
-        $path = $Config["resourceChecks"][$key]
-        if ($key -like "*Dir") {
-            Assert-PathExists -Path $path -Description "目标资源 $key" -Directory
+function New-ClaudeInstallInfo {
+    param([string]$ResourcesDir, [string]$Version = "")
+    $resources = [System.IO.Path]::GetFullPath($ResourcesDir)
+    $i18n = Join-Path $resources "ion-dist\i18n"
+    $assets = Join-Path $resources "ion-dist\assets\v1"
+    return [pscustomobject]@{
+        Version = $Version
+        ResourcesDir = $resources
+        AppAsar = Join-Path $resources "app.asar"
+        I18nDir = $i18n
+        StatsigDir = Join-Path $i18n "statsig"
+        AssetsDir = $assets
+        RootLocale = Join-Path $resources "zh-CN.json"
+        IonLocale = Join-Path $i18n "zh-CN.json"
+        IonLocaleZst = Join-Path $i18n "zh-CN.json.zst"
+        IonOverrides = Join-Path $i18n "zh-CN.overrides.json"
+        IonOverridesZst = Join-Path $i18n "zh-CN.overrides.json.zst"
+        StatsigLocale = Join-Path $i18n "statsig\zh-CN.json"
+        StatsigLocaleZst = Join-Path $i18n "statsig\zh-CN.json.zst"
+    }
+}
+
+function Test-ClaudeInstallInfo {
+    param($Install)
+    return (
+        (Test-Path -LiteralPath $Install.AppAsar -PathType Leaf) -and
+        (Test-Path -LiteralPath $Install.I18nDir -PathType Container) -and
+        (Test-Path -LiteralPath $Install.AssetsDir -PathType Container)
+    )
+}
+
+function Find-ClaudeInstall {
+    param(
+        [string]$WindowsAppsRoot = "C:\Program Files\WindowsApps",
+        [string]$ManualInstallRoot = $null
+    )
+
+    if ($ManualInstallRoot) {
+        $manual = New-ClaudeInstallInfo -ResourcesDir $ManualInstallRoot -Version "manual"
+        if (-not (Test-ClaudeInstallInfo -Install $manual)) {
+            throw "Manual Claude resources directory is incomplete: $ManualInstallRoot"
         }
-        else {
-            Assert-PathExists -Path $path -Description "目标资源 $key"
+        return $manual
+    }
+
+    Assert-PathExists -Path $WindowsAppsRoot -Description "WindowsApps search directory" -Directory
+    $candidates = New-Object System.Collections.ArrayList
+    foreach ($dir in Get-ChildItem -LiteralPath $WindowsAppsRoot -Directory -Filter "Claude_*" -ErrorAction SilentlyContinue) {
+        $versionText = Get-VersionFromClaudePackageName -Name $dir.Name
+        if (-not $versionText) { continue }
+        $install = New-ClaudeInstallInfo -ResourcesDir (Join-Path $dir.FullName "app\resources") -Version $versionText
+        if (Test-ClaudeInstallInfo -Install $install) {
+            [void]$candidates.Add($install)
         }
+    }
+
+    if ($candidates.Count -eq 0) {
+        throw "No usable Claude Desktop installation found in $WindowsAppsRoot."
+    }
+
+    return @($candidates | Sort-Object @{ Expression = { [version]$_.Version }; Descending = $true })[0]
+}
+
+function Resolve-ClaudeInstall {
+    param($Config)
+    $emptyDiscovery = @{}
+    $discovery = Get-Value -Object $Config -Key "installDiscovery" -Default $emptyDiscovery
+    $windowsAppsRoot = Get-Value -Object $discovery -Key "windowsAppsRoot" -Default "C:\Program Files\WindowsApps"
+    $manualInstallRoot = Get-Value -Object $discovery -Key "manualInstallRoot" -Default $null
+    return Find-ClaudeInstall -WindowsAppsRoot $windowsAppsRoot -ManualInstallRoot $manualInstallRoot
+}
+
+function Get-ApplyTargets {
+    param($Install)
+    return @{
+        rootLocale = $Install.RootLocale
+        ionLocale = $Install.IonLocale
+        ionLocaleZst = $Install.IonLocaleZst
+        ionOverrides = $Install.IonOverrides
+        ionOverridesZst = $Install.IonOverridesZst
+        statsigLocale = $Install.StatsigLocale
+        statsigLocaleZst = $Install.StatsigLocaleZst
+        assetsDir = $Install.AssetsDir
     }
 }
 
@@ -122,7 +249,7 @@ function Ensure-Directory {
 
 function Get-BackupRoot {
     param($Config)
-    return Join-Path (Get-ProjectRoot) $Config["backupDirName"]
+    return Join-Path (Get-ProjectRoot) (Get-Value $Config "backupDirName" "backups")
 }
 
 function Get-Timestamp {
@@ -141,35 +268,37 @@ function New-BackupRunDirectory {
 function Get-LatestBackupDirectory {
     param($Config)
     $backupRoot = Get-BackupRoot -Config $Config
-    Assert-PathExists -Path $backupRoot -Description "备份目录" -Directory
+    Assert-PathExists -Path $backupRoot -Description "backup directory" -Directory
     $latest = Get-ChildItem -LiteralPath $backupRoot -Directory | Sort-Object Name | Select-Object -Last 1
-    if ($null -eq $latest) {
-        throw "未找到可回滚的备份。"
-    }
+    if ($null -eq $latest) { throw "No backup directory is available for rollback." }
     return $latest.FullName
 }
 
 function Backup-File {
-    param(
-        [string]$Source,
-        [string]$BackupDir
-    )
-    if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) {
-        return
-    }
+    param([string]$Source, [string]$BackupDir)
+    if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) { return }
     Ensure-Directory -Path $BackupDir
-    Copy-Item -LiteralPath $Source -Destination (Join-Path $BackupDir ([System.IO.Path]::GetFileName($Source))) -Force
+    $destination = Join-Path $BackupDir ([System.IO.Path]::GetFileName($Source))
+    $sourceStream = [System.IO.File]::OpenRead($Source)
+    try {
+        $destinationStream = [System.IO.File]::Create($destination)
+        try {
+            $sourceStream.CopyTo($destinationStream)
+        }
+        finally {
+            $destinationStream.Dispose()
+        }
+    }
+    finally {
+        $sourceStream.Dispose()
+    }
+    [System.IO.File]::SetAttributes($destination, [System.IO.FileAttributes]::Normal)
 }
 
 function Restore-DirectoryFiles {
-    param(
-        [string]$SourceDir,
-        [string]$DestinationDir
-    )
+    param([string]$SourceDir, [string]$DestinationDir)
     $restored = New-Object System.Collections.ArrayList
-    if (-not (Test-Path -LiteralPath $SourceDir -PathType Container)) {
-        return $restored
-    }
+    if (-not (Test-Path -LiteralPath $SourceDir -PathType Container)) { return $restored }
     Ensure-Directory -Path $DestinationDir
     foreach ($item in Get-ChildItem -LiteralPath $SourceDir -File) {
         $destination = Join-Path $DestinationDir $item.Name
@@ -186,20 +315,12 @@ function Grant-PathAccess {
         $target = Split-Path -Path $Path -Parent
     }
     if (-not (Test-Path -LiteralPath $target)) {
-        throw "无法定位权限目标: $Path"
+        throw "Cannot locate permission target: $Path"
     }
-
-    $takeownArgs = @("/F", $target, "/A")
-    & takeown.exe @takeownArgs | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "takeown 执行失败: $target"
-    }
-
-    $icaclsArgs = @($target, "/grant", "*S-1-5-32-544:F", "/C")
-    & icacls.exe @icaclsArgs | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "icacls 授权失败: $target"
-    }
+    & takeown.exe /F $target /A | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "takeown failed: $target" }
+    & icacls.exe $target /grant "*S-1-5-32-544:F" /C | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "icacls failed: $target" }
 }
 
 function Decode-PatchText {
@@ -208,13 +329,8 @@ function Decode-PatchText {
 }
 
 function Count-LiteralOccurrences {
-    param(
-        [string]$Text,
-        [string]$Value
-    )
-    if ([string]::IsNullOrEmpty($Value)) {
-        return 0
-    }
+    param([string]$Text, [string]$Value)
+    if ([string]::IsNullOrEmpty($Value)) { return 0 }
     return [System.Text.RegularExpressions.Regex]::Matches(
         $Text,
         [System.Text.RegularExpressions.Regex]::Escape($Value)
@@ -225,7 +341,7 @@ function Get-AssetFiles {
     param([string]$AssetsDir)
     $files = New-Object System.Collections.ArrayList
     foreach ($pattern in @("*.js", "*.css")) {
-        foreach ($file in Get-ChildItem -LiteralPath $AssetsDir -Filter $pattern -File) {
+        foreach ($file in Get-ChildItem -LiteralPath $AssetsDir -Filter $pattern -File -ErrorAction SilentlyContinue) {
             [void]$files.Add($file)
         }
     }
@@ -237,45 +353,12 @@ function Get-CompressedAssetPath {
     return "$AssetPath.zst"
 }
 
-function Get-PatchedCompressedAssetPath {
-    param(
-        [string]$PatchedAssetsDir,
-        [string]$AssetPath
-    )
-    return Join-Path $PatchedAssetsDir ([System.IO.Path]::GetFileName($AssetPath) + ".zst")
-}
-
-function Get-ManagedPatchedAssets {
-    param(
-        [string]$PatchedAssetsDir,
-        [string]$AssetsDir
-    )
-    $managed = New-Object System.Collections.ArrayList
-    foreach ($compressed in Get-ChildItem -LiteralPath $PatchedAssetsDir -Filter "*.zst" -File | Sort-Object Name) {
-        $assetName = [System.IO.Path]::GetFileNameWithoutExtension($compressed.Name)
-        $assetPath = Join-Path $AssetsDir $assetName
-        if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
-            continue
-        }
-
-        [void]$managed.Add([pscustomobject]@{
-                AssetPath      = $assetPath
-                CompressedPath = $compressed.FullName
-            })
-    }
-
-    return @($managed)
-}
-
 function Analyze-PatchHits {
-    param(
-        $Patches,
-        $AssetFiles
-    )
+    param($Patches, $AssetFiles)
     $results = New-Object System.Collections.ArrayList
     foreach ($patch in $Patches) {
-        $find = Decode-PatchText -Value $patch["find"]
-        $replace = Decode-PatchText -Value $patch["replace"]
+        $find = Decode-PatchText -Value (Get-Value $patch "find")
+        $replace = Decode-PatchText -Value (Get-Value $patch "replace")
         $matchedFiles = New-Object System.Collections.ArrayList
         $replacedFiles = New-Object System.Collections.ArrayList
         $totalHits = 0
@@ -286,32 +369,28 @@ function Analyze-PatchHits {
             $hitCount = Count-LiteralOccurrences -Text $text -Value $find
             $replacedCount = Count-LiteralOccurrences -Text $text -Value $replace
             if ($hitCount -gt 0) {
-                [void]$matchedFiles.Add([pscustomobject]@{
-                        file  = $file.FullName
-                        count = $hitCount
-                    })
+                [void]$matchedFiles.Add([pscustomobject]@{ file = $file.FullName; count = $hitCount })
                 $totalHits += $hitCount
             }
             if ($replacedCount -gt 0) {
-                [void]$replacedFiles.Add([pscustomobject]@{
-                        file  = $file.FullName
-                        count = $replacedCount
-                    })
+                [void]$replacedFiles.Add([pscustomobject]@{ file = $file.FullName; count = $replacedCount })
                 $totalReplacedHits += $replacedCount
             }
         }
 
         [void]$results.Add([pscustomobject]@{
-                description       = $patch["description"]
-                find              = $patch["find"]
-                replace           = $patch["replace"]
-                matched           = $totalHits -gt 0
-                alreadyPatched    = $totalHits -eq 0 -and $totalReplacedHits -gt 0
-                totalHits         = $totalHits
-                totalReplacedHits = $totalReplacedHits
-                files             = @($matchedFiles)
-                replacedFiles     = @($replacedFiles)
-            })
+            description = Get-Value $patch "description"
+            kind = Get-Value $patch "kind" "runtime"
+            required = [bool](Get-Value $patch "required" $false)
+            find = Get-Value $patch "find"
+            replace = Get-Value $patch "replace"
+            matched = $totalHits -gt 0
+            alreadyPatched = $totalHits -eq 0 -and $totalReplacedHits -gt 0
+            totalHits = $totalHits
+            totalReplacedHits = $totalReplacedHits
+            files = @($matchedFiles)
+            replacedFiles = @($replacedFiles)
+        })
     }
     return @($results)
 }
@@ -321,173 +400,125 @@ function Get-PatchTargetFiles {
     $targets = @{}
     foreach ($result in $PatchAnalysis) {
         foreach ($fileInfo in @($result.files) + @($result.replacedFiles)) {
-            $targets[$fileInfo.file] = $true
+            if ($null -ne $fileInfo -and $fileInfo.file) {
+                $targets[$fileInfo.file] = $true
+            }
         }
     }
-    return $targets.Keys
+    return @($targets.Keys)
 }
 
 function Apply-PatchesToFile {
-    param(
-        [string]$Path,
-        $Patches
-    )
+    param([string]$Path, $Patches)
     $text = Read-Utf8Text -Path $Path
     $changes = New-Object System.Collections.ArrayList
-
     foreach ($patch in $Patches) {
-        $find = Decode-PatchText -Value $patch["find"]
-        $replace = Decode-PatchText -Value $patch["replace"]
-        if ($find -eq $replace) {
-            continue
-        }
-
+        $find = Decode-PatchText -Value (Get-Value $patch "find")
+        $replace = Decode-PatchText -Value (Get-Value $patch "replace")
+        if ($find -eq $replace) { continue }
         $count = Count-LiteralOccurrences -Text $text -Value $find
         if ($count -gt 0) {
             $text = $text.Replace($find, $replace)
             [void]$changes.Add([pscustomobject]@{
-                    description = $patch["description"]
-                    count       = $count
-                })
+                description = Get-Value $patch "description"
+                count = $count
+            })
         }
     }
-
     if ($changes.Count -gt 0) {
         Write-Utf8Text -Path $Path -Content $text
     }
-
     return @($changes)
 }
 
-function Remove-LegacyZhCnWatermark {
-    param([string]$Path)
-    if ([System.IO.Path]::GetExtension($Path) -ne ".css") {
-        return $false
-    }
-
-    $text = Read-Utf8Text -Path $Path
-    $pattern = 'html\[lang=zh-CN\] body::after\{content:"[^"]*";position:fixed;right:max\(14px,env\(safe-area-inset-right\)\);bottom:max\(10px,env\(safe-area-inset-bottom\)\);font:500 11px/1 var\(--font-ui\);color:var\(--text-500,#8a8a8a\);opacity:\.32;letter-spacing:\.02em;pointer-events:none;user-select:none;z-index:2147483000\}'
-    $cleaned = [System.Text.RegularExpressions.Regex]::Replace($text, $pattern, "")
-
-    if ($cleaned -cne $text) {
-        Write-Utf8Text -Path $Path -Content $cleaned
-        return $true
-    }
-
-    return $false
-}
-
-function Compare-TextFiles {
-    param(
-        [string]$Left,
-        [string]$Right
-    )
-    return (Read-Utf8Text -Path $Left) -ceq (Read-Utf8Text -Path $Right)
-}
-
-function Compare-BinaryFiles {
-    param(
-        [string]$Left,
-        [string]$Right
-    )
-    return (Get-FileHash -Algorithm SHA256 -LiteralPath $Left).Hash -eq (Get-FileHash -Algorithm SHA256 -LiteralPath $Right).Hash
-}
-
-function Add-VerificationMapIssues {
-    param(
-        $Issues,
-        $ExpectedMap,
-        $ActualMap,
-        [string]$Description
-    )
-    foreach ($key in $ExpectedMap.Keys) {
-        if (-not $ActualMap.ContainsKey($key)) {
-            [void]$Issues.Add("$Description 缺少关键键值: $key")
-            continue
-        }
-        if ($ActualMap[$key] -ne $ExpectedMap[$key]) {
-            [void]$Issues.Add("$Description 键值不匹配: $key")
+function Get-RequiredPatchIssues {
+    param($PatchAnalysis)
+    $issues = New-Object System.Collections.ArrayList
+    foreach ($result in $PatchAnalysis) {
+        if ($result.required -and -not $result.matched -and -not $result.alreadyPatched) {
+            [void]$issues.Add("Required patch did not match and needs maintenance: $($result.description)")
         }
     }
+    return @($issues)
+}
+
+function Test-VisibleEnglishText {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    if ($Value.Length -gt 80) { return $false }
+    if ($Value -notmatch '[A-Za-z]') { return $false }
+    if ($Value -cmatch '^[A-Z0-9_./:-]+$') { return $false }
+    if ($Value -match 'https?://') { return $false }
+    if ($Value -cmatch '^[a-z][a-z0-9-]*$') { return $false }
+    if ($Value -cmatch '^[A-Za-z0-9]+(Route|Icon|Content|Layout|Provider|Context|Component|Props|State|Type|Code|List|Map)$') { return $false }
+    if ($Value -cmatch '^[A-Za-z]+[A-Z][A-Za-z0-9]+$' -and $Value -notmatch '\s') { return $false }
+    if ($Value -in @("div", "span", "section", "article", "button", "input", "textarea", "label", "form", "main", "nav", "header", "footer", "code")) { return $false }
+    return $true
+}
+
+function Scan-MissingTranslations {
+    param([string]$AssetsDir, [string]$OutputPath)
+    $seen = @{}
+    $knownTranslations = Get-RuntimeTranslations
+    $items = New-Object System.Collections.ArrayList
+    $patterns = @(
+        @{ kind = "defaultMessage"; regex = 'defaultMessage:"([^"]+)"' },
+        @{ kind = "label"; regex = 'label:"([^"]+)"' },
+        @{ kind = "title"; regex = 'title:"([^"]+)"' },
+        @{ kind = "cowork"; regex = 'cowork:"([^"]+)"' }
+    )
+
+    foreach ($file in (Get-AssetFiles -AssetsDir $AssetsDir)) {
+        $text = Read-Utf8Text -Path $file.FullName
+        foreach ($pattern in $patterns) {
+            foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($text, $pattern.regex)) {
+                $value = [System.Text.RegularExpressions.Regex]::Unescape($match.Groups[1].Value)
+                if (-not (Test-VisibleEnglishText -Value $value)) { continue }
+                if ((Get-Value -Object $knownTranslations -Key $value -Default $null)) { continue }
+                $key = $value
+                if ($seen.ContainsKey($key)) { continue }
+                $seen[$key] = $true
+                [void]$items.Add([ordered]@{
+                    text = $value
+                    translation = ""
+                    kind = $pattern.kind
+                    file = $file.FullName
+                })
+            }
+        }
+        foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($text, '"([A-Za-z][A-Za-z ]{2,60})"')) {
+            $value = $match.Groups[1].Value
+            if (-not (Test-VisibleEnglishText -Value $value)) { continue }
+            if ((Get-Value -Object $knownTranslations -Key $value -Default $null)) { continue }
+            $key = $value
+            if ($seen.ContainsKey($key)) { continue }
+            $seen[$key] = $true
+            [void]$items.Add([ordered]@{
+                text = $value
+                translation = ""
+                kind = "string"
+                file = $file.FullName
+            })
+        }
+    }
+
+    Write-JsonFile -Path $OutputPath -Value @($items)
+    return @($items)
 }
 
 function Get-VerificationIssues {
-    param($Config)
+    param($Config, $Install = $null)
+    if ($null -eq $Install) {
+        $Install = Resolve-ClaudeInstall -Config $Config
+    }
     $artifacts = Get-ProjectArtifacts
-    Assert-SupportedInstallation -Config $Config
     Assert-ProjectArtifacts -Artifacts $artifacts
-
     $issues = New-Object System.Collections.ArrayList
-    $targets = Get-VerificationTargets
-    $applyTargets = $Config["applyTargets"]
 
-    if (-not (Compare-TextFiles -Left $artifacts["RootLocale"] -Right $applyTargets["rootLocale"])) {
-        [void]$issues.Add("root zh-CN.json 未与项目副本同步")
+    $assetFiles = Get-AssetFiles -AssetsDir $Install.AssetsDir
+    $patchAnalysis = Analyze-PatchHits -Patches (Get-EffectivePatches) -AssetFiles $assetFiles
+    foreach ($issue in Get-RequiredPatchIssues -PatchAnalysis $patchAnalysis) {
+        [void]$issues.Add($issue)
     }
-    if (-not (Compare-TextFiles -Left $artifacts["IonLocale"] -Right $applyTargets["ionLocale"])) {
-        [void]$issues.Add("ion zh-CN.json 未与项目副本同步")
-    }
-    if (-not (Compare-BinaryFiles -Left $artifacts["IonLocaleZst"] -Right $applyTargets["ionLocaleZst"])) {
-        [void]$issues.Add("ion zh-CN.json.zst 未与项目副本同步")
-    }
-    if (-not (Compare-TextFiles -Left $artifacts["IonOverrides"] -Right $applyTargets["ionOverrides"])) {
-        [void]$issues.Add("ion zh-CN.overrides.json 未与项目副本同步")
-    }
-    if (-not (Compare-BinaryFiles -Left $artifacts["IonOverridesZst"] -Right $applyTargets["ionOverridesZst"])) {
-        [void]$issues.Add("ion zh-CN.overrides.json.zst 未与项目副本同步")
-    }
-    if (-not (Compare-TextFiles -Left $artifacts["StatsigLocale"] -Right $applyTargets["statsigLocale"])) {
-        [void]$issues.Add("statsig zh-CN.json 未与项目副本同步")
-    }
-    if (-not (Compare-BinaryFiles -Left $artifacts["StatsigLocaleZst"] -Right $applyTargets["statsigLocaleZst"])) {
-        [void]$issues.Add("statsig zh-CN.json.zst 未与项目副本同步")
-    }
-
-    $rootMap = Read-JsonObject -Path $applyTargets["rootLocale"]
-    $ionMap = Read-JsonObject -Path $applyTargets["ionLocale"]
-    $statsigMap = Read-JsonObject -Path $applyTargets["statsigLocale"]
-
-    Add-VerificationMapIssues -Issues $issues -ExpectedMap $targets["rootLocale"] -ActualMap $rootMap -Description "root zh-CN"
-    Add-VerificationMapIssues -Issues $issues -ExpectedMap $targets["ionLocale"] -ActualMap $ionMap -Description "ion zh-CN"
-    Add-VerificationMapIssues -Issues $issues -ExpectedMap $targets["statsigLocale"] -ActualMap $statsigMap -Description "statsig zh-CN"
-
-    $patches = Get-Patches
-    $assetFiles = Get-AssetFiles -AssetsDir $applyTargets["assetsDir"]
-    $patchAnalysis = Analyze-PatchHits -Patches $patches -AssetFiles $assetFiles
-
-    foreach ($file in $assetFiles) {
-        $text = Read-Utf8Text -Path $file.FullName
-        foreach ($patch in $patches) {
-            $find = Decode-PatchText -Value $patch["find"]
-            $replace = Decode-PatchText -Value $patch["replace"]
-            $findCount = Count-LiteralOccurrences -Text $text -Value $find
-            if ($findCount -le 0) {
-                continue
-            }
-
-            $replaceCount = Count-LiteralOccurrences -Text $text -Value $replace
-            if ($replaceCount -gt 0 -and $replaceCount -ge $findCount) {
-                continue
-            }
-
-            if ($findCount -gt 0) {
-                [void]$issues.Add("仍有英文回退残留: $($patch['description']) -> $($file.Name)")
-            }
-        }
-    }
-
-    $managedAssets = Get-ManagedPatchedAssets -PatchedAssetsDir $artifacts["PatchedAssetsDir"] -AssetsDir $applyTargets["assetsDir"]
-    foreach ($managedAsset in $managedAssets) {
-        $assetPath = $managedAsset.AssetPath
-        $installedCompressed = Get-CompressedAssetPath -AssetPath $assetPath
-        if (-not (Test-Path -LiteralPath $installedCompressed -PathType Leaf)) {
-            continue
-        }
-
-        if (-not (Compare-BinaryFiles -Left $managedAsset.CompressedPath -Right $installedCompressed)) {
-            [void]$issues.Add("压缩 bundle 未与项目副本同步: $([System.IO.Path]::GetFileName($installedCompressed))")
-        }
-    }
-
-    return $issues
+    return @($issues)
 }

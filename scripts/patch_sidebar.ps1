@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Continue"
 
+# DEPRECATED: runtime text patches are now file-agnostic and applied by
+# scripts\apply_localization.ps1 from patches\main-ui-patches.json.
+
 $base = $null
 $dirs = @(Get-ChildItem "C:\Program Files\WindowsApps" -Directory -Filter "Claude_*" -ErrorAction SilentlyContinue | Sort-Object Name -Descending)
 foreach ($d in $dirs) {
