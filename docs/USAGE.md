@@ -21,6 +21,12 @@
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\scripts\detect_install.ps1
 ```
 
+生成兼容性报告：
+
+```powershell
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\scripts\diagnose_compatibility.ps1
+```
+
 验证当前补丁命中情况：
 
 ```powershell

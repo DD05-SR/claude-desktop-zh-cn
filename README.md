@@ -5,8 +5,9 @@
 ## 使用方法
 
 1. 完全退出 Claude Desktop（包括系统托盘里的 Claude）。
-2. 右键 `汉化应用.bat`，选择以管理员身份运行。
-3. 重新打开 Claude Desktop，在设置里选择中文。
+2. 可先运行 `兼容性检测.bat`，确认当前 Claude 版本的资源结构和关键补丁是否可用。
+3. 右键 `汉化应用.bat`，选择以管理员身份运行。
+4. 重新打开 Claude Desktop，在设置里选择中文。
 
 需要恢复英文界面时，右键 `汉化回滚.bat` 并以管理员身份运行。
 
@@ -31,6 +32,7 @@ powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\scripts\scan_missi
 ## 常用脚本
 
 - `scripts/detect_install.ps1`：检测当前 Claude Desktop 版本和资源路径。
+- `scripts/diagnose_compatibility.ps1`：生成兼容性报告，判断当前版本是否建议应用。
 - `scripts/apply_localization.ps1`：备份、复制中文资源、应用 runtime 补丁并生成兼容报告。
 - `scripts/verify_localization.ps1`：验证关键补丁是否命中或已应用。
 - `scripts/rollback_localization.ps1`：按最近一次备份回滚。

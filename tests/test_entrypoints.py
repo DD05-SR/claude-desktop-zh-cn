@@ -10,6 +10,7 @@ class EntrypointTests(unittest.TestCase):
         launchers = {
             "汉化应用.bat": "scripts\\apply_localization.ps1",
             "汉化回滚.bat": "scripts\\rollback_localization.ps1",
+            "兼容性检测.bat": "scripts\\diagnose_compatibility.ps1",
         }
 
         for name, script in launchers.items():
@@ -26,12 +27,14 @@ class EntrypointTests(unittest.TestCase):
             "patches/main-ui-patches.json",
             "scripts/common.ps1",
             "scripts/detect_install.ps1",
+            "scripts/diagnose_compatibility.ps1",
             "scripts/scan_missing.ps1",
             "scripts/apply_localization.ps1",
             "scripts/verify_localization.ps1",
             "scripts/rollback_localization.ps1",
             "汉化应用.bat",
             "汉化回滚.bat",
+            "兼容性检测.bat",
         ]
 
         for relative_path in required:
@@ -41,6 +44,7 @@ class EntrypointTests(unittest.TestCase):
         scripts = [
             "scripts/common.ps1",
             "scripts/detect_install.ps1",
+            "scripts/diagnose_compatibility.ps1",
             "scripts/scan_missing.ps1",
             "scripts/apply_localization.ps1",
             "scripts/verify_localization.ps1",

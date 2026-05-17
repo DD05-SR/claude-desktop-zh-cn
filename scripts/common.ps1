@@ -112,6 +112,47 @@ function Get-EffectivePatches {
     return @($basePatches + $translationPatches)
 }
 
+function Get-CompatibilityReport {
+    param($Install)
+    $resourcesFound = Test-Path -LiteralPath $Install.ResourcesDir -PathType Container
+    $i18nFound = Test-Path -LiteralPath $Install.I18nDir -PathType Container
+    $assetsFound = Test-Path -LiteralPath $Install.AssetsDir -PathType Container
+    $assetFiles = @()
+    if ($assetsFound) {
+        $assetFiles = @(Get-AssetFiles -AssetsDir $Install.AssetsDir)
+    }
+    $patchAnalysis = @()
+    if ($assetFiles.Count -gt 0) {
+        $patchAnalysis = @(Analyze-PatchHits -Patches (Get-EffectivePatches) -AssetFiles $assetFiles)
+    }
+    $matched = @($patchAnalysis | Where-Object { $_.matched }).Count
+    $already = @($patchAnalysis | Where-Object { $_.alreadyPatched }).Count
+    $unmatched = @($patchAnalysis | Where-Object { -not $_.matched -and -not $_.alreadyPatched }).Count
+    $requiredUnmatched = @($patchAnalysis | Where-Object { $_.required -and -not $_.matched -and -not $_.alreadyPatched }).Count
+    $recommendation = "APPLY_OK"
+    if (-not $resourcesFound -or -not $i18nFound -or -not $assetsFound) {
+        $recommendation = "UNSUPPORTED_STRUCTURE"
+    }
+    elseif ($requiredUnmatched -gt 0) {
+        $recommendation = "NEEDS_MAINTENANCE"
+    }
+
+    return [pscustomobject]@{
+        version = $Install.Version
+        resourcesDir = $Install.ResourcesDir
+        resourcesFound = $resourcesFound
+        i18nFound = $i18nFound
+        assetsFound = $assetsFound
+        assetFileCount = $assetFiles.Count
+        totalPatches = $patchAnalysis.Count
+        matched = $matched
+        alreadyApplied = $already
+        unmatched = $unmatched
+        requiredUnmatched = $requiredUnmatched
+        recommendation = $recommendation
+    }
+}
+
 function Get-ProjectArtifacts {
     $projectRoot = Get-ProjectRoot
     return @{
@@ -447,8 +488,15 @@ function Test-VisibleEnglishText {
     if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
     if ($Value.Length -gt 80) { return $false }
     if ($Value -notmatch '[A-Za-z]') { return $false }
+    if ($Value -match '[{}%]') { return $false }
     if ($Value -cmatch '^[A-Z0-9_./:-]+$') { return $false }
     if ($Value -match 'https?://') { return $false }
+    if ($Value -match '\bhttps\b') { return $false }
+    if ($Value -match '^(Sundays|Mondays|Tuesdays|Wednesdays|Thursdays|Fridays|Saturdays)$') { return $false }
+    if ($Value -match '^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$') { return $false }
+    if ($Value -match '^(January|February|March|April|May|June|July|August|September|October|November|December)$') { return $false }
+    if ($Value -match '^Aria label ') { return $false }
+    if ($Value -match '^MCP server ') { return $false }
     if ($Value -cmatch '^[a-z][a-z0-9-]*$') { return $false }
     if ($Value -cmatch '^[A-Za-z0-9]+(Route|Icon|Content|Layout|Provider|Context|Component|Props|State|Type|Code|List|Map)$') { return $false }
     if ($Value -cmatch '^[A-Za-z]+[A-Z][A-Za-z0-9]+$' -and $Value -notmatch '\s') { return $false }

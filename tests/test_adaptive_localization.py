@@ -70,6 +70,34 @@ class AdaptiveLocalizationTests(unittest.TestCase):
         self.assertIn('title:"Gateway base URL"', patch_text)
         self.assertIn('title:"网关基础 URL"', patch_text)
 
+    def test_compatibility_report_summarizes_install_assets_and_patch_health(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            resources = Path(td) / "Claude_1.20.0.0_x64__pzs8sxrjxfjjc" / "app" / "resources"
+            assets = resources / "ion-dist" / "assets" / "v1"
+            i18n = resources / "ion-dist" / "i18n" / "statsig"
+            assets.mkdir(parents=True)
+            i18n.mkdir(parents=True)
+            (resources / "app.asar").write_text("", encoding="utf-8")
+            (assets / "index-test.js").write_text('=["en-US","de-DE","fr-FR","ko-KR","ja-JP","es-419","es-ES","it-IT","hi-IN","pt-BR","id-ID"]', encoding="utf-8")
+
+            command = (
+                f". '{PROJECT_ROOT / 'scripts' / 'common.ps1'}'; "
+                f"$install = Find-ClaudeInstall -WindowsAppsRoot '{td}'; "
+                "$report = Get-CompatibilityReport -Install $install; "
+                "$report | ConvertTo-Json -Compress -Depth 8"
+            )
+            result = run_ps(command)
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["version"], "1.20.0.0")
+        self.assertTrue(report["resourcesFound"])
+        self.assertTrue(report["i18nFound"])
+        self.assertTrue(report["assetsFound"])
+        self.assertGreaterEqual(report["assetFileCount"], 1)
+        self.assertEqual(report["requiredUnmatched"], 0)
+        self.assertEqual(report["recommendation"], "APPLY_OK")
+
     def test_effective_patches_include_runtime_translation_table(self) -> None:
         command = (
             f". '{PROJECT_ROOT / 'scripts' / 'common.ps1'}'; "
@@ -200,6 +228,34 @@ class AdaptiveLocalizationTests(unittest.TestCase):
         self.assertNotIn("span", missing_texts)
         self.assertNotIn("CodeSessionRoute", missing_texts)
         self.assertNotIn("GatewayIcon", missing_texts)
+
+    def test_scan_missing_translations_filters_common_internal_strings(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            asset = Path(td) / "chunk.js"
+            output = Path(td) / "missing-zh-CN.json"
+            asset.write_text(
+                '"Sundays";"Mondays";"{pct}%";"Aria label for actions mode icon in command palette";'
+                '"must use https";"MCP server names must be unique";'
+                'formatMessage({defaultMessage:"Fresh visible settings copy",id:"visible"});',
+                encoding="utf-8",
+            )
+
+            command = (
+                f". '{PROJECT_ROOT / 'scripts' / 'common.ps1'}'; "
+                f"Scan-MissingTranslations -AssetsDir '{td}' -OutputPath '{output}' | Out-Null; "
+                f"Get-Content -LiteralPath '{output}' -Raw"
+            )
+            result = run_ps(command)
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        missing_texts = {item["text"] for item in json.loads(result.stdout)}
+        self.assertIn("Fresh visible settings copy", missing_texts)
+        self.assertNotIn("Sundays", missing_texts)
+        self.assertNotIn("Mondays", missing_texts)
+        self.assertNotIn("{pct}%", missing_texts)
+        self.assertNotIn("Aria label for actions mode icon in command palette", missing_texts)
+        self.assertNotIn("must use https", missing_texts)
+        self.assertNotIn("MCP server names must be unique", missing_texts)
 
     def test_scan_missing_translations_skips_terms_already_in_runtime_table(self) -> None:
         with tempfile.TemporaryDirectory() as td:
