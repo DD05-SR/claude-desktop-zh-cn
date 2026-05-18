@@ -63,13 +63,13 @@ try {
     }
 
     Write-Host "[6/7] Copying zh-CN resources and applying runtime patches..." -ForegroundColor Cyan
-    Copy-Item -LiteralPath $artifacts.RootLocale -Destination $install.RootLocale -Force
-    Copy-Item -LiteralPath $artifacts.IonLocale -Destination $install.IonLocale -Force
-    Copy-Item -LiteralPath $artifacts.IonLocaleZst -Destination $install.IonLocaleZst -Force
-    Copy-Item -LiteralPath $artifacts.IonOverrides -Destination $install.IonOverrides -Force
-    Copy-Item -LiteralPath $artifacts.IonOverridesZst -Destination $install.IonOverridesZst -Force
-    Copy-Item -LiteralPath $artifacts.StatsigLocale -Destination $install.StatsigLocale -Force
-    Copy-Item -LiteralPath $artifacts.StatsigLocaleZst -Destination $install.StatsigLocaleZst -Force
+    Copy-FileWithAccess -Source $artifacts.RootLocale -Destination $install.RootLocale
+    Copy-FileWithAccess -Source $artifacts.IonLocale -Destination $install.IonLocale
+    Copy-FileWithAccess -Source $artifacts.IonLocaleZst -Destination $install.IonLocaleZst
+    Copy-FileWithAccess -Source $artifacts.IonOverrides -Destination $install.IonOverrides
+    Copy-FileWithAccess -Source $artifacts.IonOverridesZst -Destination $install.IonOverridesZst
+    Copy-FileWithAccess -Source $artifacts.StatsigLocale -Destination $install.StatsigLocale
+    Copy-FileWithAccess -Source $artifacts.StatsigLocaleZst -Destination $install.StatsigLocaleZst
 
     $fileReport = New-Object System.Collections.ArrayList
     foreach ($assetPath in $patchTargets) {

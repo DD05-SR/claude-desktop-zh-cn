@@ -85,7 +85,8 @@ function New-RuntimeTranslationPatches {
         @{ Kind = "title"; Prefix = 'title:"'; Suffix = '"' },
         @{ Kind = "cowork"; Prefix = 'cowork:"'; Suffix = '"' },
         @{ Kind = "placeholder"; Prefix = 'placeholder:"'; Suffix = '"' },
-        @{ Kind = "aria-label"; Prefix = 'aria-label:"'; Suffix = '"' }
+        @{ Kind = "aria-label"; Prefix = 'aria-label:"'; Suffix = '"' },
+        @{ Kind = "string"; Prefix = '"'; Suffix = '"' }
     )
 
     foreach ($source in @($Translations.Keys | Sort-Object)) {
@@ -343,7 +344,7 @@ function Restore-DirectoryFiles {
     Ensure-Directory -Path $DestinationDir
     foreach ($item in Get-ChildItem -LiteralPath $SourceDir -File) {
         $destination = Join-Path $DestinationDir $item.Name
-        Copy-Item -LiteralPath $item.FullName -Destination $destination -Force
+        Copy-FileWithAccess -Source $item.FullName -Destination $destination
         [void]$restored.Add($destination)
     }
     return $restored
@@ -360,8 +361,34 @@ function Grant-PathAccess {
     }
     & takeown.exe /F $target /A | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "takeown failed: $target" }
-    & icacls.exe $target /grant "*S-1-5-32-544:F" /C | Out-Null
+    $isDirectory = Test-Path -LiteralPath $target -PathType Container
+    $adminGrant = "*S-1-5-32-544:F"
+    if ($isDirectory) {
+        $adminGrant = "*S-1-5-32-544:(OI)(CI)F"
+    }
+    & icacls.exe $target /grant $adminGrant /C | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "icacls failed: $target" }
+    $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $userGrant = "*${currentSid}:F"
+    if ($isDirectory) {
+        $userGrant = "*${currentSid}:(OI)(CI)F"
+    }
+    & icacls.exe $target /grant $userGrant /C | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "icacls current user failed: $target" }
+}
+
+function Copy-FileWithAccess {
+    param([string]$Source, [string]$Destination)
+    $parent = Split-Path -Path $Destination -Parent
+    if ($parent) {
+        Grant-PathAccess -Path $parent
+    }
+    if (Test-Path -LiteralPath $Destination -PathType Leaf) {
+        Grant-PathAccess -Path $Destination
+        [System.IO.File]::SetAttributes($Destination, [System.IO.FileAttributes]::Normal)
+    }
+    [System.IO.File]::Copy($Source, $Destination, $true)
+    [System.IO.File]::SetAttributes($Destination, [System.IO.FileAttributes]::Normal)
 }
 
 function Decode-PatchText {
@@ -484,14 +511,21 @@ function Get-RequiredPatchIssues {
 }
 
 function Test-VisibleEnglishText {
-    param([string]$Value)
+    param([string]$Value, [string]$Kind = "defaultMessage")
     if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    if ($Value -match '[\u4e00-\u9fff]') { return $false }
     if ($Value.Length -gt 80) { return $false }
     if ($Value -notmatch '[A-Za-z]') { return $false }
     if ($Value -match '[{}%]') { return $false }
+    if ($Value -match '<[^>]+>') { return $false }
+    if ($Value -match '[\\/]|\.([A-Za-z0-9]{1,8})(\s|$)') { return $false }
     if ($Value -cmatch '^[A-Z0-9_./:-]+$') { return $false }
+    if ($Value -cmatch '^[A-Za-z0-9_.:-]+$' -and $Value -match '[_.:-]') { return $false }
+    if ($Value -match '\b(API|URL|URI|HTTP|HTTPS|JSON|JWT|OAuth|CORS|SDK|CLI|MCP|DOM|CSS|HTML|JS|TS|SQL|SCIM|HIPAA|CVC|UUID|ID)\b') { return $false }
+    if ($Value -match '\b(Opus|Sonnet|Haiku|Gemini|Llama|Mistral|Bedrock|Vertex|Foundry|GPT|AWS|Azure|GCP)\b') { return $false }
     if ($Value -match 'https?://') { return $false }
     if ($Value -match '\bhttps\b') { return $false }
+    if ($Value -match '^[0-9]+[dhms]$') { return $false }
     if ($Value -match '^(Sundays|Mondays|Tuesdays|Wednesdays|Thursdays|Fridays|Saturdays)$') { return $false }
     if ($Value -match '^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$') { return $false }
     if ($Value -match '^(January|February|March|April|May|June|July|August|September|October|November|December)$') { return $false }
@@ -501,6 +535,14 @@ function Test-VisibleEnglishText {
     if ($Value -cmatch '^[A-Za-z0-9]+(Route|Icon|Content|Layout|Provider|Context|Component|Props|State|Type|Code|List|Map)$') { return $false }
     if ($Value -cmatch '^[A-Za-z]+[A-Z][A-Za-z0-9]+$' -and $Value -notmatch '\s') { return $false }
     if ($Value -in @("div", "span", "section", "article", "button", "input", "textarea", "label", "form", "main", "nav", "header", "footer", "code")) { return $false }
+    if ($Kind -eq "string") {
+        if ($Value -notmatch '\s') { return $false }
+        if ($Value -cmatch '^[A-Z][a-z]+( [A-Z][a-z]+)*$' -and $Value.Length -lt 18) { return $false }
+        if ($Value -match '\b(error|failed|loading|choose|select|create|delete|enable|disable|open|close|save|cancel|try|search|settings|session|task|folder|branch|workspace|privacy|notification|permission|account|message|conversation|schedule|routine|connect|install|update|review|payment|billing)\b') {
+            return $true
+        }
+        return $false
+    }
     return $true
 }
 
@@ -521,7 +563,7 @@ function Scan-MissingTranslations {
         foreach ($pattern in $patterns) {
             foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($text, $pattern.regex)) {
                 $value = [System.Text.RegularExpressions.Regex]::Unescape($match.Groups[1].Value)
-                if (-not (Test-VisibleEnglishText -Value $value)) { continue }
+                if (-not (Test-VisibleEnglishText -Value $value -Kind $pattern.kind)) { continue }
                 if ((Get-Value -Object $knownTranslations -Key $value -Default $null)) { continue }
                 $key = $value
                 if ($seen.ContainsKey($key)) { continue }
@@ -536,7 +578,7 @@ function Scan-MissingTranslations {
         }
         foreach ($match in [System.Text.RegularExpressions.Regex]::Matches($text, '"([A-Za-z][A-Za-z ]{2,60})"')) {
             $value = $match.Groups[1].Value
-            if (-not (Test-VisibleEnglishText -Value $value)) { continue }
+            if (-not (Test-VisibleEnglishText -Value $value -Kind "string")) { continue }
             if ((Get-Value -Object $knownTranslations -Key $value -Default $null)) { continue }
             $key = $value
             if ($seen.ContainsKey($key)) { continue }

@@ -69,6 +69,8 @@ class AdaptiveLocalizationTests(unittest.TestCase):
         self.assertIn('defaultMessage:"配置第三方推理"', patch_text)
         self.assertIn('title:"Gateway base URL"', patch_text)
         self.assertIn('title:"网关基础 URL"', patch_text)
+        self.assertIn('"Configure third-party inference"', patch_text)
+        self.assertIn('"配置第三方推理"', patch_text)
 
     def test_compatibility_report_summarizes_install_assets_and_patch_health(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -110,6 +112,21 @@ class AdaptiveLocalizationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         patch = json.loads(result.stdout)
         self.assertEqual(patch["replace"], 'defaultMessage:"配置第三方推理"')
+
+    def test_runtime_translation_table_covers_reported_visible_gaps(self) -> None:
+        translations = json.loads((PROJECT_ROOT / "locales" / "runtime-zh-CN.translations.json").read_text(encoding="utf-8"))
+
+        expected = {
+            "Scheduled tasks": "定时任务",
+            "No scheduled tasks yet.": "还没有定时任务。",
+            "New session": "新建会话",
+            "What’s up next, {name}?": "接下来做什么，{name}？",
+            "Enable remote control by default": "默认启用远程控制",
+            "What Anthropic doesn’t see": "Anthropic 不会看到的内容",
+            "Your files, code, or workspace contents": "你的文件、代码或工作区内容",
+        }
+        for source, target in expected.items():
+            self.assertEqual(translations[source], target)
 
     def test_find_claude_install_selects_latest_valid_version(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -153,6 +170,19 @@ class AdaptiveLocalizationTests(unittest.TestCase):
         self.assertIn("OpenRead", backup_body)
         self.assertIn("Create", backup_body)
         self.assertNotIn("Copy-Item", backup_body)
+
+    def test_protected_copy_uses_inheritable_permissions_before_file_copy(self) -> None:
+        common = (PROJECT_ROOT / "scripts" / "common.ps1").read_text(encoding="utf-8")
+        grant_body = common.split("function Grant-PathAccess", 1)[1].split("function Copy-FileWithAccess", 1)[0]
+        copy_body = common.split("function Copy-FileWithAccess", 1)[1].split("function Decode-PatchText", 1)[0]
+        apply_script = (PROJECT_ROOT / "scripts" / "apply_localization.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("(OI)(CI)F", grant_body)
+        self.assertIn("WindowsIdentity", grant_body)
+        self.assertIn("Grant-PathAccess -Path $parent", copy_body)
+        self.assertIn("[System.IO.File]::Copy", copy_body)
+        self.assertNotIn("Copy-Item -LiteralPath $artifacts", apply_script)
+        self.assertIn("Copy-FileWithAccess -Source $artifacts.RootLocale", apply_script)
 
     def test_apply_patches_scans_all_assets_without_file_names(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -256,6 +286,46 @@ class AdaptiveLocalizationTests(unittest.TestCase):
         self.assertNotIn("Aria label for actions mode icon in command palette", missing_texts)
         self.assertNotIn("must use https", missing_texts)
         self.assertNotIn("MCP server names must be unique", missing_texts)
+
+    def test_scan_missing_translations_filters_code_models_and_api_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            asset = Path(td) / "chunk.js"
+            output = Path(td) / "missing-zh-CN.json"
+            asset.write_text(
+                'formatMessage({defaultMessage:"API Error",id:"api"});'
+                'formatMessage({defaultMessage:"Preview URL",id:"url"});'
+                'formatMessage({defaultMessage:"Weekly · Opus",id:"model"});'
+                'formatMessage({defaultMessage:"System for Cross-domain Identity Management (SCIM)",id:"scim"});'
+                'formatMessage({defaultMessage:"Open cli.github.com",id:"domain"});'
+                'formatMessage({defaultMessage:"为了保障安全，请重新输入已保存银行卡的安全码（CVC）。",id:"mixed"});'
+                '"targetX";"refY";"NaN";"Trace";"Memory";'
+                '"Create a recurring task from this settings page";'
+                'formatMessage({defaultMessage:"Fresh visible privacy setting",id:"visible"});',
+                encoding="utf-8",
+            )
+
+            command = (
+                f". '{PROJECT_ROOT / 'scripts' / 'common.ps1'}'; "
+                f"Scan-MissingTranslations -AssetsDir '{td}' -OutputPath '{output}' | Out-Null; "
+                f"Get-Content -LiteralPath '{output}' -Raw"
+            )
+            result = run_ps(command)
+
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        missing_texts = {item["text"] for item in json.loads(result.stdout)}
+        self.assertIn("Fresh visible privacy setting", missing_texts)
+        self.assertIn("Create a recurring task from this settings page", missing_texts)
+        self.assertNotIn("API Error", missing_texts)
+        self.assertNotIn("Preview URL", missing_texts)
+        self.assertNotIn("Weekly · Opus", missing_texts)
+        self.assertNotIn("System for Cross-domain Identity Management (SCIM)", missing_texts)
+        self.assertNotIn("Open cli.github.com", missing_texts)
+        self.assertNotIn("为了保障安全，请重新输入已保存银行卡的安全码（CVC）。", missing_texts)
+        self.assertNotIn("targetX", missing_texts)
+        self.assertNotIn("refY", missing_texts)
+        self.assertNotIn("NaN", missing_texts)
+        self.assertNotIn("Trace", missing_texts)
+        self.assertNotIn("Memory", missing_texts)
 
     def test_scan_missing_translations_skips_terms_already_in_runtime_table(self) -> None:
         with tempfile.TemporaryDirectory() as td:
